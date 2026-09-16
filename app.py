@@ -534,6 +534,15 @@ def list_depts():
             rows=cur.fetchall()
     return jsonify([r["dept"] for r in rows])
 
+
+@app.route("/api/init", methods=["GET"])
+def run_init():
+    try:
+        init_db()
+        return jsonify({"ok": True, "message": "資料庫初始化完成！管理員帳號: ADMIN, 密碼: 0000"})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
 @app.route("/", methods=["GET"])
 def health():
     return jsonify({"status":"ok","message":"打卡系統 API 運行中"})
