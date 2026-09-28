@@ -547,6 +547,23 @@ def admin_records():
             rows=cur.fetchall()
     return jsonify([dict(r) for r in rows])
 
+
+@app.route("/api/admin/records/clear_all", methods=["POST"])
+@require_admin
+def clear_all_records():
+    """清空所有打卡記錄（危險操作，需二次確認）"""
+    data = request.json or {}
+    confirm = data.get("confirm", "")
+    if confirm != "CONFIRM_DELETE_ALL":
+        return jsonify({"error": "需要確認碼才能執行此操作"}), 400
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) as cnt FROM punch_records")
+            count = cur.fetchone()["cnt"]
+            cur.execute("DELETE FROM punch_records")
+        conn.commit()
+    return jsonify({"ok": True, "deleted": count, "message": f"已刪除 {count} 筆打卡記錄"})
+
 @app.route("/api/admin/export_csv", methods=["GET"])
 @require_admin
 def export_csv():
