@@ -548,6 +548,23 @@ def admin_records():
     return jsonify([dict(r) for r in rows])
 
 
+
+@app.route("/api/admin/employees/<emp_id>/clear_records", methods=["POST"])
+@require_admin
+def clear_employee_records(emp_id):
+    """清空特定員工的所有打卡記錄"""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT emp_id, name FROM employees WHERE emp_id=%s", (emp_id,))
+            emp = cur.fetchone()
+            if not emp:
+                return jsonify({"error": "找不到此員工"}), 404
+            cur.execute("SELECT COUNT(*) as cnt FROM punch_records WHERE emp_id=%s", (emp_id,))
+            count = cur.fetchone()["cnt"]
+            cur.execute("DELETE FROM punch_records WHERE emp_id=%s", (emp_id,))
+        conn.commit()
+    return jsonify({"ok": True, "deleted": count, "message": f"已刪除 {emp['name']} 的 {count} 筆打卡記錄"})
+
 @app.route("/api/admin/records/clear_all", methods=["POST"])
 @require_admin
 def clear_all_records():
