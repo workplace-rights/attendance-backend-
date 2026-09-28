@@ -219,16 +219,40 @@ def list_locations():
 @app.route("/api/punch", methods=["POST"])
 @require_auth
 def punch():
-    data       = request.json or {}
-    punch_type = data.get("type")
-    lat        = data.get("latitude")
-    lng        = data.get("longitude")
-    acc        = data.get("accuracy")
-    dfp        = data.get("device_fp","").strip()
-    if punch_type not in ("in","out"):
-        return jsonify({"error":"打卡類型錯誤"}), 400
+    data = request.json or {}
+    lat  = data.get("latitude")
+    lng  = data.get("longitude")
+    acc  = data.get("accuracy")
+    dfp  = data.get("device_fp","").strip()
     if lat is None or lng is None:
         return jsonify({"error":"缺少位置資訊"}), 400
+    from datetime import timezone, timedelta
+    tw_tz = timezone(timedelta(hours=8))
+    now_tw = datetime.now(tw_tz)
+    today  = now_tw.strftime("%Y-%m-%d")
+
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            # 查今日所有打卡記錄
+            cur.execute(
+                "SELECT punch_type, punch_time FROM punch_records WHERE emp_id=%s AND punch_time LIKE %s ORDER BY punch_time",
+                (request.emp_id, f"{today}%"))
+            today_recs = cur.fetchall()
+
+    # 防 3 分鐘內重複打卡
+    if today_recs:
+        last_rec = today_recs[-1]
+        last_time = datetime.strptime(last_rec["punch_time"], "%Y-%m-%d %H:%M:%S")
+        last_time_tw = last_time.replace(tzinfo=tw_tz)
+        diff_mins = (now_tw - last_time_tw).total_seconds() / 60
+        if diff_mins < 3:
+            return jsonify({
+                "error": f"距離上次打卡不足 3 分鐘（{int(diff_mins*60)} 秒前），請稍後再試",
+                "error_code": "TOO_SOON"
+            }), 429
+
+    # 自動判斷：今日第一筆=上班，之後=重新打卡（記錄保留，顯示取頭尾）
+    punch_type = "in" if not today_recs else "out" 
     # 裝置驗證
     if request.emp_id != "ADMIN":
         with get_db() as conn:
@@ -257,18 +281,12 @@ def punch():
         else:
             matched_name = "非指定地點"
         matched_id = None
-    from datetime import timezone, timedelta
-    tw_tz = timezone(timedelta(hours=8))
-    now   = datetime.now(tw_tz).strftime("%Y-%m-%d %H:%M:%S")
+    now   = now_tw.strftime("%Y-%m-%d %H:%M:%S")
     today = datetime.now(tw_tz).strftime("%Y-%m-%d")
     ip    = get_client_ip()
     with get_db() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT id FROM punch_records WHERE emp_id=%s AND punch_type=%s AND punch_time LIKE %s",
-                        (request.emp_id, punch_type, f"{today}%"))
-            if cur.fetchone():
-                label="上班" if punch_type=="in" else "下班"
-                return jsonify({"error":f"今日已有{label}打卡記錄"}), 409
+
             cur.execute("SELECT device_name FROM employees WHERE emp_id=%s",(request.emp_id,))
             emp_row=cur.fetchone()
             dname_saved=emp_row["device_name"] if emp_row else ""
