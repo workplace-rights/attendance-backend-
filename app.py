@@ -257,8 +257,10 @@ def punch():
         else:
             matched_name = "非指定地點"
         matched_id = None
-    now   = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    today = date.today().strftime("%Y-%m-%d")
+    from datetime import timezone, timedelta
+    tw_tz = timezone(timedelta(hours=8))
+    now   = datetime.now(tw_tz).strftime("%Y-%m-%d %H:%M:%S")
+    today = datetime.now(tw_tz).strftime("%Y-%m-%d")
     ip    = get_client_ip()
     with get_db() as conn:
         with conn.cursor() as cur:
@@ -282,7 +284,9 @@ def punch():
 @app.route("/api/punch/today", methods=["GET"])
 @require_auth
 def punch_today():
-    today = date.today().strftime("%Y-%m-%d")
+    from datetime import timezone, timedelta
+    tw_tz = timezone(timedelta(hours=8))
+    today = datetime.now(tw_tz).strftime("%Y-%m-%d")
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM punch_records WHERE emp_id=%s AND punch_time LIKE %s ORDER BY punch_time",
@@ -291,6 +295,32 @@ def punch_today():
     return jsonify([dict(r) for r in rows])
 
 # ── Admin: Employees ──────────────────────────────────────────────────────
+
+@app.route("/api/my/records", methods=["GET"])
+@require_auth
+def my_records():
+    """員工查詢自己的打卡記錄（依日期範圍）"""
+    start = request.args.get("start", "")
+    end   = request.args.get("end", "")
+    from datetime import timezone, timedelta
+    tw_tz = timezone(timedelta(hours=8))
+    if not start:
+        # 預設本月第一天
+        now = datetime.now(tw_tz)
+        start = now.strftime("%Y-%m-01")
+    if not end:
+        end = datetime.now(tw_tz).strftime("%Y-%m-%d")
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT * FROM punch_records 
+                   WHERE emp_id=%s AND punch_time >= %s AND punch_time <= %s
+                   ORDER BY punch_time DESC LIMIT 200""",
+                (request.emp_id, start, end + " 23:59:59")
+            )
+            rows = cur.fetchall()
+    return jsonify([dict(r) for r in rows])
+
 @app.route("/api/admin/employees", methods=["GET"])
 @require_admin
 def list_employees():
