@@ -251,11 +251,12 @@ def punch():
                 matched_id=loc["id"]; matched_name=loc["name"]; matched_dist=d
     if matched_id is None:
         nearest = min(locs, key=lambda l: dist_meters(lat,lng,l["latitude"],l["longitude"]), default=None)
-        hint=""
         if nearest:
             d = int(dist_meters(lat,lng,nearest["latitude"],nearest["longitude"]))
-            hint=f"（最近地點「{nearest['name']}」距離 {d} 公尺）"
-        return jsonify({"error":f"不在任何允許打卡的地點範圍內{hint}","error_code":"NOT_IN_LOCATION"}), 403
+            matched_name = f"非指定地點（最近：{nearest['name']} {d}公尺）"
+        else:
+            matched_name = "非指定地點"
+        matched_id = None
     now   = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     today = date.today().strftime("%Y-%m-%d")
     ip    = get_client_ip()
